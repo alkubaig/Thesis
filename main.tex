@@ -1,0 +1,149 @@
+\documentclass[double,10pt] {beavtex}
+% \usepackage[margin=1.5in,footskip=1.5in]{geometry}
+
+\usepackage{natbib}
+\usepackage{amsmath} %
+\usepackage{xcolor}
+\usepackage{color}
+\usepackage{array}
+\usepackage{wrapfig}
+\usepackage{multirow}
+\usepackage{tabularx}
+% \usepackage{color, colortbl}
+% \definecolor{name}{system}{definition}
+% \definecolor{Gray}{gray}{0.9}
+\usepackage{graphicx}
+\graphicspath{ {./images/} }
+% \usepackage[demo]{graphicx}
+\usepackage{subcaption}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{microtype}
+\usepackage{enumitem}
+\usepackage{lipsum}
+\usepackage{url}
+\usepackage{lambda} %
+\usepackage{listings}
+\usepackage{indentfirst}
+% \usepackage{hyperref}
+\usepackage[hidelinks]{hyperref}
+
+% use \term for introducing new terms
+\newcommand{\term}[1]{\textit{#1}}
+\newcommand{\ChcL}{\OB{\langle}}
+\newcommand{\ChcR}{\OB{\rangle}}
+\newcommand{\Chc}[3][f]{\OB{#1\langle#2,#3\rangle}}
+\newcommand{\Opt}[2][f]{\OB{#1\langle#2\rangle}}
+\newcommand{\ChcPP}[3][f]{\Chc[#1]{\prog{#2}}{\prog{#3}}}
+\newcommand{\Step}{\OB{\;\mapsto}\;}
+
+% macro to select a scaled-down version of Bera Mono (for instance)
+\makeatletter
+\newcommand\BeraMonottfamily{%
+  \def\fvm@Scale{0.85}% scales the font down
+  \fontfamily{fvm}\selectfont% selects the Bera Mono font
+}
+\makeatother
+
+% \lstset{
+%   basicstyle=\linespread{1}\ttfamily\small, frame=single,numbersep=10pt,
+% }
+
+\lstset{
+  basicstyle=\linespread{1}\fontsize{9}{10}\selectfont\BeraMonottfamily, frame=single,numbersep=10pt,aboveskip=12pt
+}
+
+% citation groups
+\newcommand\CCcore{EW11tosem,Walk13thesis,HW16fosd}
+\newcommand\VPcore{EW11gttse,CEW16ecoop}
+\newcommand\VPstretch{WE12gpce,EWC13fosd}
+\newcommand\VPdata{Walk14onward,MMWWK17vamos,SE17fosd}
+\newcommand\VPfacets{AF:POPL12,YYS12,Aus13,Sch16,Austin14, Pretnar15}
+\newcommand\VPmultiexec{DP10,JR11,deG14,Kwon16,RS16,Kammar2013,Plotkin2001}
+\newcommand\VPaware{NKN:ICSE14,Ngu15,MWKTS:ASE16}
+% \newcommand\VEff{Pretnar15}
+
+% cite later: Sch16 -- faceted execution in Haskell
+
+\title{Integrating Side Effects in Variational Programs Using Algebraic Effects}
+% \title{Handling Effects in Variational Programs}
+\author{Ghadeer Alkubaish}
+\degree{Master of Science}
+\doctype{Thesis}
+\department{Electrical Engineering and Computer Science}
+\depttype{School}
+\depthead{Director}
+\major{Computer Science}
+\advisor{Eric Walkingshaw}
+\submitdate{Feb 24, 2020}
+\commencementyear{2020}
+
+\abstract{
+Variational programming supports efficiently executing many related programs at once by encoding all of the programs in one "variational program" that captures the differences among them statically and explicitly. An open problem in variational programming is how to handle side effects---if two program variants perform different side effects, we cannot separate the effect of one variant from the other since the outside world is not variational. A potential solution is to create variation-aware execution environments for variational programs, for example, a variational file system that keeps track of file variants corresponding to program variants. However, it is infeasible to do this for all kinds of effects. Also, there are different ways to handle the interaction of effects and variation that are incompatible with each other, preventing a one-size-fits-all solution.
+
+In this thesis, we argue that \term{algebraic effects} can be used to resolve the problem of combining variation and effects by enabling programmers to flexibly and incrementally extend a variational programming environment to handle new kinds of effects. We present a proof-of-concept prototype in the \emph{Eff} programming language that demonstrates how a variational programming environment can be extended to support file input/output. Crucially, such extensions are done at the library level, which enables handling new kinds of effects and handling existing effects in multiple ways, both of which are essential in variational programming applications.
+}
+% \acknowledgements{}
+\acknowledgements{
+\input{chapters/acknowledgement}
+}
+
+\begin{document}
+\maketitle
+\mainmatter
+
+\chapter{Introduction}
+\label{sec:introduction}
+\input{chapters/ch1}
+
+\chapter{Background: Algebraic Effects}
+\label{sec:background}
+\input{chapters/ch2}
+
+\chapter{Variation as an Algebraic Effect}
+\label{sec:Variational_exe}
+\input{chapters/ch3}
+
+\chapter{Variational Programming and Effects}
+\label{sec:Variational_effects}
+\input{chapters/ch4}
+
+\chapter{Variational File I/O: Writing}
+\label{sec:file_IO_writing}
+\input{chapters/ch5}
+
+\chapter{Variational Queue}
+\label{sec:queue_lib}
+\input{chapters/ch6}
+
+\chapter{Variational File I/O: Reading}
+\label{sec:file_IO_reading}
+\input{chapters/ch7}
+
+\chapter{Limitations of Variation as an Effect}
+\label{sec:efficiency}
+\input{chapters/ch8}
+
+\chapter{Related Work}
+\label{sec:rw}
+\input{chapters/relatedWork}
+
+\chapter{Conclusion and Future Work}
+\label{sec:conc}
+\input{chapters/conclusion}
+
+\pagebreak
+
+\bibliography{c/eric,c/martin,c/change,c/vds,c/fp,c/error-reporting,c/misc,c/dblp2_short}
+\bibliographystyle{plain}
+
+\pagebreak
+
+\appendix
+
+\chapter{Parsing the Boolean Formula of a Choice}
+\label{sec:ctx_parser}
+\input{chapters/appendix}
+
+\end{document}
+

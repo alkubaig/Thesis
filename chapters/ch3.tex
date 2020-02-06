@@ -1,0 +1,120 @@
+\begin{figure}[!htb]
+  \centering
+\begin{lstlisting}[]
+effect Choice : ctx -> bool;;
+
+let v_handler = handler
+    | #Choice s k -> 
+        let l = select s (k true) in
+        let r = select (Not s) (k false) in
+	    prepend s l @ prepend (Not s) r
+    | val x -> [(Lit true,x)]
+;;
+
+let chc d l r = if #Choice d then l else r;;
+\end{lstlisting}
+  \caption{The variation effect and handler.}
+  \label{fig:choice-impl}
+\end{figure}
+%
+We use the algebraic effects system introduced in Chapter \ref{sec:background} to implement variation as an effect. We use it as part of our proof-of-concept for the integration of variation and side effects. However, implementing variation as an effect is not efficient when the number of options increases. We discuss the limitation of this implementation in Chapter \ref{sec:efficiency}. 
+
+In this chapter, we show the algebraic effect definition of variation and its handler. Then, we show how variational values of lists and arithmetic expressions are encoded with the variation effect.
+
+To implement variation as an effect, we use the choice as its primitive operation. We handle choices by performing variational execution which dynamically evaluates the alternatives of the choices. The choice effect operation \texttt{\#Choice} shown in Figure \ref{fig:choice-impl} is declared to take a variation context (or context for short) \texttt{ctx} and return a boolean value. The variation context is represented by a boolean formula over options. 
+
+The handler \texttt{v\_handler} catches the choice and handle it by invoking the continuation with either \texttt{true} or \texttt{false}. The result of invoking the continuation is of type \texttt{(ctx * 'a) list} which is a list of tuples: each with a context and a corresponding return value of any type.
+The results from the both invocations are concatenated in one list representing the variational value to be returned from the handler. When invoking the continuation with \texttt{true}, the corresponding return value is the left alternative of the choice. Otherwise, it is the right alternative of the choice, as shown in the definition of \texttt{chc}. The return case \texttt{val} takes the underlying return value as parameter and returns a list of one tuple that contains the context \texttt{true} and the underlying return value.
+
+To build the context corresponded with each choice's return value, we use the functions \texttt{select} and \texttt{prepend}. The function \texttt{prepend} conjuncts the underlying choice context in every element's context in the underlying resulted list from the continuation (each element is tuple of context and value). The function \texttt{select} removes elements that would be unsatisfiable after the conjunction of the underlying choice context. We apply \texttt{prepend} twice: once with the underlying choice context on the list from the left alternative and once with the negation of the underlying choice context on the list from the right alternative. Hence, we are able to simulate all possible variants by running the program once (there are $2^k$ possible results with $k$ distinct options). 
+
+After we define the variation effect, we can encode variational values in multiple forms using the choice operation. In this example, we write an arithmetic expression which varies around the two options \texttt{Economy} and \texttt{Business} assuming fees also vary around the ticket type. Therefore, we sum up two expressions: the first represents fees and the second represents ticket costs. 
+
+%
+\begin{lstlisting}[escapeinside={(*}{*)}]
+with v_handler handle
+    let fee = (*$ \Chc[\texttt{Economy}]{\texttt{50}}{\Chc[\texttt{Business}]{\texttt{100}}{\texttt{150}}} $*) in 
+    let ticket = (*$ \Chc[\texttt{Economy}]{\texttt{600}}{\Chc[\texttt{Business}]{\texttt{4000}}{\texttt{6000}}} $*) in
+    fee + ticket
+;;
+\end{lstlisting}
+%
+Note that the notation used here is syntactic sugar to make the choice operation look cleaner and will be used throughout this paper. Below is the version of the expression with no syntactic sugar.
+%
+\begin{lstlisting}[escapeinside={(*}{*)}]
+with v_handler handle
+    let fee = chc "Economy" 50 (chc "Business" 100 150) in 
+    let ticket = chc "Economy" 600 (chc "Business" 4000 6000) in
+    fee + ticket
+;;
+\end{lstlisting}
+%
+In the above computation, there are 3 possible results based on the two options \texttt{Economy} and \texttt{Business}. The program above should output the choice below as a result.
+%
+\begin{lstlisting}[escapeinside={(*}{*)}, backgroundcolor = \color{lightgray}]
+(*$  \Chc[\texttt{Economy}]{\texttt{650}}{\Chc[\texttt{Business}]{\texttt{4100}}{\texttt{6150}}} $*)
+\end{lstlisting}
+%
+The truth table below illustrates the result for each possible selection of \texttt{Economy} and \texttt{Business}.
+
+\setlength{\tabcolsep}{0.5em} % for the horizontal padding
+{\renewcommand{\arraystretch}{1.2}% for the vertical padding
+\begin{center}
+\begin{tabular}[c]{ | c  |  c  |  c  |  c |}
+\hline
+ \multicolumn{2}{| c | }{ \multirow{2}{3.5em}{And}} & \multicolumn{2}{c|}{Economy} \\
+ \cline{3-4}
+\multicolumn{2}{| c | }{}& T  & F \\
+\hline
+ \multirow{2}{3.5em}{Business}   & T  &  \multirow{2}{1.5em}{650} & 4100 \\
+  \cline{2-2}\cline{4-4}
+ & F  &  & 6150    \\
+ \hline
+\end{tabular}
+\end{center}
+}
+
+Another useful application is constructing a variational list as a fundamental data structure form used to incorporate variational values \cite{SE17fosd}. It allows mapping options to different lists which can then be used in further purposes such as searching over different lists corresponding to different contexts at once. For example, we can collect information about different flights in a list of tuples: each has a corresponding flight id and price. 
+%
+\begin{lstlisting}[escapeinside={(*}{*)}]
+with v_handler handle
+    (*$   \texttt{[(1,4890);} $*)
+    (*$ \texttt{(2,\Chc[\texttt{Economy}]{\texttt{790}}{\Chc[\texttt{Business}]{\_}{\texttt{4500}}}); }$*)
+    (*$ \texttt{(3,2876);} $*)
+    (*$ \texttt{(4,\Chc[\texttt{Economy}]{\texttt{580}}{\Chc [\texttt{Business}] {\texttt{3200}}{\_}});} $*)
+    (*$ \texttt{(5,\Chc[\texttt{Economy}]{\_}{\Chc [\texttt{Business}] {\texttt{3780}}{\texttt{5939}}})]} $*)
+;;
+\end{lstlisting}
+%
+The basic list notation is extended by the choice notation to allow capturing variational lists. The notation {\_} represents \texttt{Nothing} or an empty element. For example, the second element in the list is empty or does not exist when the option \texttt{Economy} is false and the option \texttt{Business} is true.
+%
+Note, the notation used above is a syntactic sugar for a list of variational \texttt{Maybe} values. Below is the list version with no syntactic sugar.
+%
+\begin{lstlisting}[escapeinside={(*}{*)}]
+with v_handler handle
+    (*$ \texttt{[(1,Just 4890);} $*)
+    (*$ \texttt{(2,\Chc[\texttt{Economy}]{\texttt{Just 790}}{\Chc[\texttt{Business}]{\texttt{Nothing}}{\texttt{Just 4500}}});}$*)
+    (*$ \texttt{(3,Just 2876);}$*)
+    (*$ \texttt{(4,\Chc[\texttt{Economy}]{\texttt{Just 580}}{\Chc [\texttt{Business}] {\texttt{Just 3200}}{\texttt{Nothing}}});}$*)
+    (*$ \texttt{(5,\Chc[\texttt{Economy}]{\texttt{Nothing}}{\Chc [\texttt{Business}] {\texttt{Just 3780}}{\texttt{Just 5939}}})]}$*)
+;;
+\end{lstlisting}
+%
+The result should capture all possible list variants. The truth table below illustrates the list corresponded with each possible selection of \texttt{Economy} and \texttt{Business}. Note that the \texttt{Nothing} cases are omitted. 
+
+\setlength{\tabcolsep}{0.5em} % for the horizontal padding
+{\renewcommand{\arraystretch}{1.2}% for the vertical padding
+\begin{center}
+\begin{tabular}[c]{ | c  |  c  |  c  |  c |}
+\hline
+ \multicolumn{2}{| c | }{ \multirow{2}{3.5em}{And}} & \multicolumn{2}{c|}{Economy} \\
+ \cline{3-4}
+\multicolumn{2}{| c | }{}& T  & F \\
+\hline
+ \multirow{2}{3.5em}{Business}   & T  &  \multirow{2}{15em}{[(1,4890);(2,790);(3,2876);(4,580)]} & [(1,4890);(3,2876);(4,3200);(5,3780)] \\
+  \cline{2-2}\cline{4-4}
+ & F  &  & [(1,4890);(2,4500);(3,2876);(5,5939)]    \\
+ \hline
+\end{tabular}
+\end{center}
+}

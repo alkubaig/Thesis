@@ -1,0 +1,121 @@
+To illustrate how algebraic effects enable programmers to deal with the interaction of variation and effects, we extend the execution environment of variational programs to support file I/O, which is a major contribution of this work. Specifically, we write new handlers for the variation effect to support file reading and writing. In this chapter, we focus on writing and in Chapter \ref{sec:file_IO_reading} we focus on reading. In addition, we extend text files with a variation encoding.
+
+\begin{figure}[!h]
+\begin{lstlisting}
+Below is a breakdown of the preliminary housing costs for 2018-2019.
+#if meal
+    #if partial
+        $1902
+    #else
+        $3372
+    #endif
+#endif
+#if artists' residence
+    Partial (default) or optional regular meal plan. 
+    Total Including Activity/Technology Fee:
+    #if single | efficiency
+        $13360
+    #else
+        $12216
+    #endif
+#endif
+#if smith
+    Regular meal plan required, except for students living in kitchen suites. 
+    Kitchen suite students receive the partial (default) 
+    or optional regular meal plan.
+    Total Including Activity/Technology Fee:
+    #if kitchen
+        #if single
+            $11234
+        #else
+            $10530
+        #endif
+    #else
+        #if single 
+            $13360
+        #else
+            $11002
+        #endif
+    #endif
+#endif
+\end{lstlisting}
+  \caption{Variational text file showing housing prices.}
+  \label{fig:file_example}
+\end{figure}
+
+\section{Variational File Encoding}
+\label{sec:file_format}
+
+We extend plain text files with a variation encoding known as \term{C-Preprocessor}\footnote{https://www.tutorialspoint.com/cprogramming/c\_preprocessors.html} (CPP). CPP is a text substitution tool that must to be processed before compile time. We choose this encoding because it is a real world widely used convention, which makes our work useful for existing applications. CPP has many commands, but the ones relevant to our work are \texttt{\#if}, \texttt{\#else} and \texttt{\#endif}. 
+
+The file shown in Figure \ref{fig:file_example} is an example of a variational file that uses the encoding mentioned above. It is inspired by a real data from Massart College for Art and Design showing their housing prices of 2018-2019\footnote{https://massart.edu/cost-housing}. This file represents an explanation of costs in different scenarios for their students. Note that text files are extended by this encoding and not required to have it; we can still work with plain files flexibly and the special syntax is needed only when variation exists. 
+
+To understand the concept of variational lines, we look at the first 3 lines of the file. The file starts with a plain line (not variational). The next is a nested variational line. When the option \texttt{meal} is enabled, it yields the variational line $\Chc[\texttt{partial}]{\texttt{"\$1902"}}{\texttt{"\$3372"}}$, which when the option \texttt{partial} is enabled, it yields the plain line \texttt{"\$1902"}. Otherwise, it yields the plain line \texttt{"\$3372"}. Note that it is not necessary to have an \texttt{\#else} when there is an \texttt{\#if}, but there must be an \texttt{\#endif} whenever there is an \texttt{\#if} to ensure balance and correct parsing. Also, note that the third variational line has in its nested variational line an \texttt{OR} expression \texttt{single | efficiency} because the context of the choice is a boolean formula over options. 
+
+\begin{figure}[h]
+\begin{lstlisting}
+let v_write_handler file = handler
+    | #Choice s k ->
+        wr_if s file;
+        (k true);
+        wr_else file;
+        (k false);
+        wr_end file 
+    | #Write_file _ k ->  k ()
+    | val x ->
+        if (is_empty x) then () else #Write_file(file, x ^ "\n")
+;;
+
+let writeFile t = let _ = #Write_file(dfile, t) in t;;
+
+let write_h file v =
+    with v_write_handler file handle
+        v ()
+;;
+
+let opt d t = chc d t "";;
+\end{lstlisting}
+% \end{subfigure} \hspace{1em}
+\caption{File writing library.}
+\label{fig:write-lib}
+\end{figure}
+
+\section{Variational Writing}
+\label{sec:file_write}
+
+In this section, we write a new handler for the variation effect to support writing and show an example of its use. Our goal is to be able to use a program like below to write a variational line. The following variational line has two alternatives \texttt{"749"} and \texttt{"4055"} based on the option \texttt{Economy}.
+%
+\begin{lstlisting}[escapeinside={(*}{*)}]
+WriteFile "flight.txt" (*\Chc[\texttt{Economy}]{\texttt{"749"}}{\texttt{"4055"}}*)
+\end{lstlisting}
+%
+Equivalently, we could write the program below for the same result. 
+%
+\begin{lstlisting}[escapeinside={(*}{*)}]
+(*\Chc[\texttt{Economy}]{\texttt{\#WriteFile "flight.txt" "749"}}{\texttt{\#WriteFile "flight.txt" "4055"}}*)
+\end{lstlisting}
+
+The handler \texttt{write\_v\_handler} in Figure \ref{fig:write-lib} catches and handles the variation effect for the purpose of writing. It has a similar behavior to the handler in Figure \ref{fig:choice-impl} for handling the choice operation. However, for handling the choice effect operation here, we do not construct a variational value, we just run the alternatives of the choice and write the corresponding keywords \texttt{\#if}, \texttt{\#else}, or \texttt{\#endif} into the text file via the functions \texttt{wr\_if}, \texttt{wr\_else} and \texttt{wr\_end} respectively. 
+
+For handling the built-in effect operation \texttt{\#Write\_file}, we simply run the continuation with a unit value until reaching the return case. The helper function \texttt{writeFile} enforces the text parameter of \texttt{\#Write\_file} to be the return value. Note that we can neglect passing the file channel in every call to \texttt{writeFile} and use a default file channel instead because the corresponding channel is already passed to the handler. In the return case \texttt{val}, we write the underlying return value into the text file. 
+
+For more convenience, we use two other helper functions. We use the helper function \texttt{opt} for cases where we only care about one alternative of the choice and not the other, so we ignore the else case. The function \texttt{opt} is a choice with an empty string in the right alternative. We use the helper function \texttt{write\_h} to wrap the handler syntax.
+
+Using this mechanism, we could write variational lines and/or plain text to files.
+
+\begin{lstlisting}[escapeinside={(*}{*)}]
+let w_file = #Open_out "file.eff" ;;
+
+let line1 () = writefile "Below is a breakdown ....";;
+let line2 () = (*$ \Opt[\texttt{meal}]{\Chc[\texttt{partial}]{\texttt{writefile "\$1,902"}}{\texttt{writefile "\$3372"}}}$*);;
+
+write_h w_file line1 ; write_h w_file line2;;
+
+#Close_out w_file;;
+\end{lstlisting}
+%
+The example above shows the program used to write the first two lines of the example file in Figure \ref{fig:file_example}. Note that this implementation does not prevent us from writing plain (with no variation) text to files. We only use choices when intending to write variational lines.  Also note that we use a syntactic sugar for the opt notation (as shown in \texttt{line2} in the example above) similar to the syntactic sugar for the choice notation. The code below shows the version without the syntactic sugar of opt. 
+%
+\begin{lstlisting}[escapeinside={(*}{*)}]
+opt "meal" (*$ (\Chc[\texttt{partial}]{\texttt{writefile "\$1,902"}}{\texttt{writefile "\$3372"}}) $*);;
+\end{lstlisting}

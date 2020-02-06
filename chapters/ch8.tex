@@ -1,0 +1,48 @@
+% In this section, we address the challenges and concerns related to our work. 
+Our choice effect is closely related to similar choice effects described in previous work on algebraic effects \cite{BP15effects,Pretnar15,Kammar2013,Plotkin2001}. The main difference is that our choices also include a formula that can be used to coordinate choices in different parts of the program. However, both are work and previous work share a common limitation: choices implemented as effects are very inefficient compared to built-in language support for variation.
+
+One of the core ideas underlying variational execution is that parts of the program shared among two or more variants are executed only once. However, this is unfortunately not the case for variation implemented via choice effects. 
+
+Consider the program below executing a variational list of numbers. 
+%
+\begin{lstlisting}[escapeinside={(*}{*)}]
+with v_handler handle
+    [5;9;7;(*\Chc[\texttt{B}]{\texttt{5}}{\texttt{6}}*);(*\Chc[\texttt{A}]{\texttt{11}}{\texttt{10}}*)] 
+;;
+\end{lstlisting}
+%
+Ideally, we would like the raw elements to be visited once: elements 5, 9 and 7. Now consider doing an operational computation on this list such as summing up the list. To figure out how many times every element in the list gets executed in calculating the sum, we use a state counter. This counter is incremented every time an element is visited as follows in \texttt{sum}.     
+%
+\begin{lstlisting}[escapeinside={(*}{*)}]
+let rec sum l = 
+    match l with 
+        [] -> 0
+        | (x::xs) -> #Set(#Get()+1); x + sum xs
+;;
+\end{lstlisting}
+%
+We return the sum of the list along with the value of the state counter as follows.
+%
+\begin{lstlisting}[escapeinside={(*}{*)}]
+with state handle
+    with v_handler handle
+        let l = [5;9;7;(*\Chc[\texttt{B}]{\texttt{5}}{\texttt{6}}*);(*\Chc[\texttt{A}]{\texttt{11}}{\texttt{10}}*)] in
+        (sum l, #Get())
+;;
+\end{lstlisting}
+%
+Because this lists has 4 variants, every element in the list has been visited 4 times. The program above outputted the following result. 
+%
+\begin{lstlisting}[escapeinside={(*}{*)}, backgroundcolor = \color{lightgray}]
+[(A & B, (37,5));
+((*$\neg$*)A & B, (36,10));
+(A & (*$\neg$*)B, (38,15));
+((*$\neg$*)A & (*$\neg$*)B, (37,20))]
+\end{lstlisting}
+%
+This means that the size of the computation increases exponentially with respect to the number of options in the program; $ O(2^n)$. Unfortunately, we are not able to avoid this with the current approach, while it could've been more efficient to visit the list once until reaching the first variational element. The work in \cite{MMWWK17vamos} deals with this issue by designing multiple variational stacks' implementations that avoid repeating shared parts. However, doing this for every kind of variation we deal with is overwhelming. 
+
+
+In this work, we chose to implement variational execution via choice effects for expediency. Our goal is to demonstrate how algebraic effects can be used to solve the problem of managing side effects during variational execution. However, a proper language for variational execution with side effects should include both algebraic effects and built-in support for variation. That is, built-in constructs for choices and optional values, and corresponding language run-time support for variational execution. 
+
+The language \emph{Eff} we use to implement this work is an under development language, which makes this work more challenging. Its lack of features forces us to implement a basic incremental SAT solver to solve boolean formulas in our choices' contexts. If the language was more advanced with features, we could use a more efficient solver. Moreover, the language is lacking operations for file I/O and string manipulation features needed in paring. This also forces us to alter the type system to introduce new types such as \texttt{Channel} and \texttt{Char}, import various string operations from \emph{OCaml} and build a new compiler instance to work with. 

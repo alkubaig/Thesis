@@ -1,0 +1,47 @@
+Integrating side effects with variation is challenging because the execution environment of variational programs is not variational, so we can not separate the effect of one variant from the other. 
+The variation effect introduced in the previous chapter composes well with some types of effects, but still fails with others. We discuss an example in faceted execution illustrating this point. Then, we discuss our solution in resolving this problem.
+
+The work done in \cite{Austin14} shows the use of faceted execution to enforce dynamic information-flow security. The inspiration behind this work is preventing untrusted sources from running sensitive programs with full privileges. The authors argue that their faceted execution techniques can protect against malicious attacks and enforce integrity and confidentiality. The term they use to indicate a variational value or choice is \term{faceted value}. They use faceted values to simulate the public and private versions of the same program under a privacy policy.
+
+\begin{lstlisting}[escapeinside={(*}{*)}]
+with state handle
+    with v_handler handle
+        (#Set(5));
+        let ok = check secret in
+    	if ok then 
+            (#Set(#Get() * 2))
+    	else
+            ()
+        ;
+        #Get()
+;;
+\end{lstlisting}
+
+% To enforce a security level on certain values, we protect them with a policy.
+The example above has a privacy-protected variable \texttt{secret} represented as a choice. It can only be enabled to access the sensitive information when the privacy policy indicates. Using this feature, we declare the state to be 5 and update it based on the value of \texttt{secret} which we check. If the private facet has the correct password, we update the state by doubling its value in the private facet and keep it as it is in the public facet as follows. \\
+\centerline{\texttt {secret = $ \Chc [\texttt{P}]{\texttt{"mypassword"}} {\bot}$} \quad \texttt {state = $ \Chc [\texttt{P}]{10} {5} $} }\\
+%
+While if the private facet has the wrong password, the state is unchanged and has the same value for public and private facets as follows. \\
+\centerline{\texttt {secret = $ \Chc [\texttt{P}]{\texttt{"wrong"}} {\bot} $} \quad \texttt {state = 5}}
+%
+Therefore, this choice mechanism allowed two facets of the information presented. A private and a public information for authorized and unauthorized users respectively, which is useful in making secure applications and it works well with the variation effect so far. 
+
+Sometimes however, variation and effects do not compose well. Consider adding other side effects to the program above such as a print statement. 
+%
+\begin{lstlisting}[]
+with state handle
+    with v_handler handle
+        (#Set(5));
+        let ok = check secret in
+    	if ok 
+    	    then (#Set(#Get() * 2))
+    	else
+            #Print("wrong password")
+        ;
+        #Get()
+;;
+\end{lstlisting}
+%
+The error message would be printed in both cases regardless of the value of \texttt{secret}. This explains how we fail to separate the effects of one variant form the other in the current implementation.   
+
+Someone might consider building a variational environment for every effect type to solve the problem above, but this is tedious and infeasible in some domains. Moreover, some dimensions of variation correspond to differences in platforms which can not be simulated together. Therefore, we want to give the programmer the tools to deal with the interaction of variation and effects in an expressive and systematic way using algebraic effects. This is done on a case-by-case basis because every effect type might need a special treatment. The use of algebraic effects enable us to flexibly and incrementally extend the execution environment to handle new kinds of effects or handling existing effects in multiple ways. 

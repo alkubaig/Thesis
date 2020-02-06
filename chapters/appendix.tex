@@ -1,0 +1,43 @@
+\begin{lstlisting}
+let rec getChoice_ split_string left = 
+	
+    let rec go xss left' = 
+        match xss with 
+            [] -> ((Lit false),[])
+            | (x::xs) -> 
+                if (x =  ")") then 
+                    (left',xs)					
+                else 
+                    let (c',es') = (getChoice_ xss left') in 
+                    go es' c'
+    in 
+    match split_string with 
+        [] -> (left,[])
+        | (e::es) -> 		
+            if (e =  "(") then 
+                go es left
+            else if (e = "!") then 
+                let (l',es') = getChoice_ es left in 
+                (Not l',es')
+            else if (e = "&") then 
+                let (r',es') =  (getChoice_ es left) in 
+                (And (left, r'), arr')
+            else if (e = "|") then 
+                let (r',es') =  (getChoice_ es left) in 
+                (Or (left, r'),arr') 
+            else 
+                ((Ref e),es) 
+;;
+
+let rec get_choice split_string left = 
+    let (c,l) =  getCh split_string left in
+    match l with 
+        [] -> c
+        | _ -> get_choice l c
+;;
+
+let parse_choice split_string = 
+    match split_string with 
+        [] -> (Lit false)
+        | (x::xs)-> get_choice xs (Lit true);; 
+\end{lstlisting}

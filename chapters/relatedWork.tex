@@ -1,0 +1,93 @@
+In this section we discuss various related work. We briefly discuss a work that addresses the problem of integrating variation with side effects but does not solve it. We review in details a work that approaches the same problem we address and handles file I/O differently. Eventually, we compare our variation effect with the non-determinism effect. 
+
+\section{VarexJ: A Variability-Aware Interpreter for Java Applications}
+
+This work builds a virtual machine (VarexJ) for testing software product lines in variational settings allowing the testing of all configurations at one run \cite{Mein14:MS}. This machine has been successful in various aspects, but still suffers from the limitations of integrating side effects such as file I/O. 
+
+In this work, they could not deal with files for testing in variation because the different configurations affect each other. For example, running the program to test with some configuration would read and write something to the file that would be changed or deleted when testing with another configuration. This could be managed with individual runs by resetting the file to the starting state, but with multi-execution software this is in-feasible as the result of one configuration might overwrite the other. Solutions suggested, but not implemented, to the problem include new file models, separating files for different variation contexts, or variability-aware file content encoding. 
+
+\section{Typed Faceted Values for Secure Information Flow in Haskell}
+\label{related_work2}
+A major concern in programs that carry sensitive data is enforcing a policy that keeps the data safe and prevent attacks or unauthorized accesses to it \cite{Austin14,AF:POPL12}. A good strategy to control the information flow of the program is to require programmers to mark sensitive data to protect them. This has been effectively used to enforce information flow in secure multi-execution, where a program has two versions low and high. The high execution access and controls privates channels only, while the low execution controls public channels. The work in \cite{AF:POPL12} introduced faceted values to simulate both versions of the program in one process. The faceted value is equivalent to the choice in our work where one alternative holds the private facet and the other holds the public facet. However, these programs can still leak sensitive information through implicit flow when side effects are invoked. Therefore, the work in \cite{Austin14} extends on faceted values to make facet-aware I/O operations such as mutable references cells (mutable states) and socket communication through channels (file I/O).
+
+Similar to our approach, they build a Haskell library that can be integrated into languages. They implement faceted values as monads separately from the side effects. Then, they extend them to work with side effects. Programs with side effects could be in the following form where \texttt{secret} is a faceted value. 
+%
+\begin{lstlisting}[escapeinside={(*}{*)}]
+do v <- secret 
+    do if v == 42 
+        then writeIORef x 1
+        else return ()
+    readIORef x
+
+\end{lstlisting}
+%
+This program in Haskell would have the type \texttt{(Facet (FIO a))} which can not be run (\texttt{FIO} is their limited version of \texttt{IO}). Therefore, their work converts programs of this type to the type \texttt{(FIO (Facet a))} to be able to run them soundly. In order for them to figure out the path of the program flow, they implement a program counter as a list denoting their selections (public or private) of the labels on faceted values used throughout the program. 
+
+This implementation so far, has the same goal we have with the variation effect. However, we do not use a program counter to figure out the selections, we use the continuation which we invoke with true and false simulating all variants (variational execution). The return value of the continuation is the corresponded selection of the underlying choice label (option). 
+
+% To create facet-aware reference cells, they implement an interface that works with the faceted types explicitly. The operations of it are similar to the state effect for writing, reading and initializing a new reference cell. For example, \texttt{readFIORef} has type \texttt{FIORef a -> FIO(Faceted a)}; it take an explicit faceted type of the cell and returns a faceted value. In our work however, we introduce new handlers and avoid introducing new effects. Our handlers catch the built-in effects and enforce new behaviors on them. This makes our work flexible and extendable by allowing us to handle the same effects in multiple ways. 
+
+For file I/O and network sockets, they address the same issue we address that the file system or the channel have external environments that are not facet-aware. To make file I/O facet-aware, they introduce new operations that work with faceted values explicitly as shown below. 
+%
+\begin{lstlisting}[escapeinside={(*}{*)}]
+openFileF :: View -> FilePath -> IOMode -> FIO FHandle
+hGetCharF :: FHandle -> FIO (Faceted Char)
+hPutCharF :: FHandle -> Faceted Char -> FIO ()
+\end{lstlisting}
+%
+In our work however, we introduce new handlers and avoid introducing new effects. Our handlers catch the built-in effects and enforce new behaviors on them. This makes our work flexible and extensible by allowing us to handle the same effects in multiple ways. 
+
+To avoid changing the external environment (the file system), they require raw data (either the public or private alternative) to be sent to the channel, or no data at all if the operation requires access to data that should not be accessed. Thus, the trick they use to work with file I/O on the library level is by attaching a view, which is a list of labels, to the file handle in \texttt{openFileF} operation indicating the privacy policy. 
+
+The view attached to the handle is checked against the program counter, if the program counter selects a label that is not in the view, the underlying operations are disabled. Consider the following program with the program counter \texttt{["z","w","x"]}.
+%
+\begin{lstlisting}[escapeinside={(*}{*)}]
+do h <- openFileF ["z","w"] "file" WriteMode
+    hPutCharF h (makeFacets "z" 'a' 'b') 
+\end{lstlisting}
+%
+No write should happen in this case to avoid leaking information to \texttt{"x"}, since it is not in the view. However, if the program counter was \texttt{["z"]}, character \texttt{'a'} would be written. 
+%
+Similarly, the read operation below is protected by the view holding \texttt{"k"} and \texttt{"l"}.
+%
+\begin{lstlisting}[escapeinside={(*}{*)}]
+do h <- openFileF ["k","l"] "file" ReadMode
+    hGetCharF h 
+\end{lstlisting}
+%
+In comparison to our work, we extend text files with the CPP format which lets us control every line of the file and flexibly read and write variational lines from the file. On the other hand, they require all labels to be mentioned upfront when the file is opened.
+
+The main property we maintain is the preservation property which ensures symmetry; one alternative of the choice does not control the other alternative. In contrast, their faceted values are asymmetric because the private alternative can control the public alternative, but the private alternative can not control the public alternative. Consider the example below. 
+
+\begin{lstlisting}[escapeinside={(*}{*)}]
+hPutCharh (*\Chc[\texttt{k}]{\texttt{'a'}}{\texttt{'b'}} *)
+hGetChar h
+\end{lstlisting}
+%
+Since only raw data could be sent to the file, either \texttt{'a'} or \texttt{'b'} could be written. If the user had access to the private alternative of \texttt{k}, the program would write \texttt{'a'} into the file. Then, the second line of code returns $\Chc[\texttt{k}]{\texttt{'a'}}{\_}$ to avoid information leak. While if the user had access to the public alternative of \texttt{k}, the program would write \texttt{'b'} into the file. Then, the second line of code returns \texttt{'b'} and not $\Chc[\texttt{k}]{\texttt{\_}}{\texttt{'b'}}$ which breaks the symmetry property. They claim that this approach is more natural and avoids the challenge of keeping track of all labels. 
+
+\section{Algebraic Effects for a Non-deterministic Effect}
+% \TODO{Following paragraph cut-and-pasted from ECOOP paper. Adapt and revise.}
+Work on algebraic effects and effect handlers has frequently used a choice as an
+example of a non-deterministic effect \cite{BP15effects,Pretnar15,Kammar2013,Plotkin2001}.  
+These choice effects differ from our notion of choices in two key ways: (1)~Each choice effect is independent, there is no concept analogous to dimensions to synchronize selections across
+choices. (2)~The evaluation of an expression with choice effects yields an
+unstructured set of variants, rather than a structured variational value that clarifies
+the relationship between a sequence of selections and the variant it yields, as
+in our variation effect.
+%
+A notable exception is the \term{selection functional} effect presented in
+\cite{BP15effects}, which essentially implements dimensioned choices in the
+\emph{Eff} programming language.
+%
+However, the control flow enforced by these encodings of choices rules out
+several ways to optimize variation-preserving computations. Since computations
+for different alternatives are performed in different continuations, we lose
+the opportunity to perform choice reduction to proactively eliminate
+unreachable alternatives~\cite{CEW14toplas}, or to join converged execution paths early.
+
+Finally, encoding choices as effects loses the ability to explicitly pattern match on them which is often needed for variational analyses. 
+
+% This ability is often needed for variational analyses, for example, the ability to
+% commute selections with computations is a critical transformation for analyzing
+% software product lines~\cite{Kastner12:TCA,Kastner11:VPP,CEW12icfp,CEW14toplas,Apel10:TSF}.

@@ -1,0 +1,288 @@
+Similar to other kinds of variational values described in this thesis, a variational queue conceptually represents many different plain queues. Variational queues, and other variational data structures \cite{WKEAB:Onward14}, are useful in a variety of variational programming applications. Our variational queue implementation is inspired by the variational stack implementation in \cite{MMWWK17vamos}. The work in \cite{MMWWK17vamos} also explores different implementations of variational stacks and their trade-offs in terms of efficiency and space complexity. We particularly use variational queues in this work to represent variational files. It allows us to simulate multiple plain files in one program and would be useful for supporting file reading (Chapter \ref{sec:file_IO_reading}). 
+
+In this chapter, we explain the details of the variational queue implementation we use. We discuss the two main operations: \texttt{enqueue} and \texttt{dequeue}. Because the implementation of \texttt{dequeue} is particularly complicated, we provide detailed examples illustrating the behavior we expect. 
+
+\section{Variational Queue Implementation}
+\label{sec:queue_impl}
+
+\begin{figure}[h]
+\begin{lstlisting}
+type 'a v = Hole
+    | One of 'a 
+    | Chc of ctx  * ('a v) * ('a v) 
+;;
+type 'a opt = ('a * ctx);; 
+
+type 'a queue = ('a opt ) list;; 
+val dequeue: ctx -> 'a queue -> 'a v * 'a queue;;
+val enqueue: ctx -> 'a v -> 'a queue -> 'a queue;;
+\end{lstlisting}
+\caption{Variational queue signature.}
+\label{fig:queue_sig}
+\end{figure}
+
+In this section, we show the implementation of the variational queue and its abstract signature. In the next sections we show the details of its operations. 
+
+We represent variational queues as lists of optional values. An optional value is represented by the \texttt{opt} type, which is a tuple of a value and context as shown in Figure \ref{fig:queue_sig}.
+%
+
+With this implementation, we could keep track of the variation context corresponding to every value in the queue. Because the queue is simulating different contexts, \texttt{dequeue} and \texttt{enqueue} each take a variation contexts as parameter which differentiate them from plain queue operations. Moreover, the return value of \texttt{dequeue} is of type \texttt{v} because the return value is either a plain value (\texttt{One}), a variational value (\texttt{Chc}), or nothing (\texttt{Hole}) as shown in Figure \ref{fig:queue_sig}. Similarly, \texttt{enqueue} appends values of type \texttt{v} into the queue. 
+
+\section{Variational Enqueue}
+\label{sec:queue_enqueu}
+
+\begin{figure}
+\begin{lstlisting}
+let toOpts = 
+    let rec go c v = 
+        (match v with 
+            Hole   -> []
+            | (One a) -> [(a,c)]
+            | (Chc (c', l,r) ) -> go (And (c, c')) l ++ go (And (c, (Not c'))) r)
+      in go (Lit true)
+;;
+      
+let enqueue c v q = (q ++ toOpts (Chc (c, v, Hole)));;
+
+\end{lstlisting}
+  \caption{Variational \texttt{enqueue} implementation.}
+  \label{fig:enqueue}
+\end{figure}
+
+The operation \texttt{enqueue} simply takes a value of type \texttt{v} and appends it into the queue with the corresponding context passed as parameter (shown in Figure \ref{fig:enqueue}). The operation \texttt{enqueue} invokes \texttt{toOpts} on the \texttt{v} value to convert it into an \texttt{opt} value. The operation \texttt{toOpts} also recurs on each choice alternative to convert it into an \texttt{opt} value with the conjunction of the context parameter and underlying context of the choice. 
+
+\begin{lstlisting}
+Flight cost: 
+#if Business
+    4055
+#else
+    749
+#end
+\end{lstlisting}
+%
+Consider the example above of a file with two tickets' costs. This file could be inserted into the variational queue by the following sequence of \texttt{enqueue} operations. 
+%
+\begin{lstlisting}
+$ enqueue true (One "Flight cost:")
+$ enqueue Business (One "4055")
+$ enqueue !Business (One "749")
+\end{lstlisting}
+%
+Or by following sequence of \texttt{enqueue} operations.  
+\begin{lstlisting}[escapeinside={(*}{*)}]
+$ enqueue true (One "Flight cost:")
+$ enqueue true (*\Chc[\texttt{Business}]{\texttt{"4055"}}{\texttt{"749"}}*)
+\end{lstlisting}
+%
+As a result, we end-up with the following variational queue representing the file above. 
+%
+\begin{lstlisting}[backgroundcolor = \color{lightgray}]
+[("Flight cost:",true);("4055", Business);("749",!Business)]
+\end{lstlisting}
+
+
+\section{Variational Dequeue in Action}
+\label{sec:queue_dequeue_ex}
+
+To understand the behavior expected when dequeuing values form the variational queue. Consider the following example operations performed on the queue above. These examples correspond to scenarios that are more likely to occur in \texttt{dequeue}. 
+%
+\begin{enumerate}[label=Example \arabic*:]
+%
+\item Suppose we perform \texttt{dequeue} with context \texttt{Business} on the queue above as follows (we use \texttt{B} as a shortcut for \texttt{Business}).
+%
+\begin{lstlisting}
+dequeue B [("Flight cost:",true);("4055", B);("749",!B)] = 
+    ("Flight cost:", [("Flight cost:",!B);("4055", B);("749",!B)])
+\end{lstlisting}
+The context of the first value on the queue is \texttt{true}, meaning that it's present in all variants. If we dequeue it only in context \texttt{Business} then that means it has not yet been dequeued in context \texttt{!Business}. Therefore, we return the value \texttt{"Flight cost:"}, but still keep it in the queue with context \texttt{!Business}.  
+%
+\item Suppose we perform \texttt{dequeue} with context \texttt{Business} again on the queue resulted from Example 1 as follows. 
+%
+\begin{lstlisting}
+dequeue B [("Flight cost:",!B);("4055", B);("749",!B)] = 
+    ("4055", [("Flight cost:",!B);("749",!B)])
+\end{lstlisting}
+%
+The context of the first value on the queue is \texttt{!Business} (we already dequeued it in context \texttt{Business}), so we should skip it because it conflicts with the context we dequeue with. The context of the second value on the queue is \texttt{Business} which is the same context we are dequeuing with, so we return the value and remove it completely from the queue. 
+% However, this introduces a hole because now we have only the right alternative of the choice $\Chc[\texttt{Business}]{\texttt{"4055"}}{\texttt{"749"}}$ in the queue.
+%
+\item Suppose we perform \texttt{dequeue} with context \texttt{!Business} on the queue resulted from Example 1 as follows. 
+%
+\begin{lstlisting}
+dequeue !B [("Flight cost:",!B);("4055", B);("749",!B)] = 
+    ("Flight cost:", [("4055", B);("749",!B)])
+\end{lstlisting}
+%
+The context of the first value on the queue is \texttt{!Business} which is the same context we are dequeuing with, so we return the value and remove it completely from the queue. This value has been dequeued in both variants after this (In Example 1 and in this Example). 
+%
+\item Suppose we perform \texttt{dequeue} with context \texttt{true} on the queue resulted from Example 3 as follows. 
+%
+\begin{lstlisting}[escapeinside={(*}{*)}]
+dequeue true [("4055", B);("749",!B)] = 
+    ((*\Chc[\texttt{B}]{\texttt{"4055"}}{\texttt{"749"}}*), [])
+\end{lstlisting}
+%
+Dequeuing with \texttt{true} means to perform \texttt{dequeue} on all variants of the queue. Therefore, the result of this operation would be the value of every variant in the queue. The first value in the queue has context \texttt{Business} and the second value has context !Business, so both are returned constructing the choice $\Chc[\texttt{Business}]{\texttt{"4055"}}{\texttt{"749"}}$. In addition, they are removed entirely from the queue. 
+%
+\end{enumerate}
+
+\section{Variational Dequeue Implementation}
+\label{sec:queue_dequeue}
+
+\begin{figure}
+ \begin{lstlisting}
+let rec dequeue_ cIn q v = 
+    if unsatCtx cIn then 
+        (v, q)
+    else
+        match q with 
+            [] -> (v, [])
+            | ((a,cElem)::oq) ->
+                let cDeq = And (cIn, cElem) in 
+                let cRem = And (Not cIn, cElem) in  
+                let cToDo = And (cIn, Not cElem) in  
+                let  (v', q') = dequeue_ cToDo oq (Chc (cDeq,(One a),v)) in
+                (v',(a,cRem)::q')
+;;
+
+let dequeue c q = dequeue_ c q Hole;;
+\end{lstlisting}
+  \caption{Variational \texttt{dequeue} implementation.}
+  \label{fig:dequeue}
+\end{figure}
+
+In this section, we show the details of the \texttt{dequeue} operation shown in Figure \ref{fig:dequeue}. When we dequeue an element, we have to think of three different contexts: the context of the element we dequeue \texttt{cDeq}, the context of the element that remains in the queue \texttt{cRem} and the context of the hole we need to fill \texttt{cToDo}. We could also think of the hole as the element we still need to find and dequeue. These 3 contexts are built from two contexts we start with: the context we perform dequeue with \texttt{cIn} and the context of the first element on the queue \texttt{cElem}.
+
+Intuitively and with the examples we showed in last section, consider the following cases:
+
+\begin{enumerate}
+
+\item The element is dequeued if the context we dequeue with is satisfiable with its context. Therefore, \texttt{cDeq} is (\texttt{cIn} $\And$ \texttt{cElem}). If \texttt{cDeq} is satisfiable, the element is returned. Otherwise, it is skipped. 
+\item  After we dequeue an element, there is a chance we need to dequeue it in other contexts, so we keep it in the queue and avoid dequeuing it again in the same context. Therefore, \texttt{cRem} is (\texttt{!cIn} $\And$ \texttt{cElem}). If \texttt{cRem} is unsatisfiable, the element is removed from the queue (we do not need to dequeue it again).
+
+\item  After we dequeue an element of one context, we might still need to dequeue more elements of other contexts as in Example 4. Therefore, \texttt{cToDo} is (\texttt{cIn} $\And$ \texttt{!cElem}). When \texttt{cToDo} becomes unsatisfiable, we stop the search and return. 
+
+\end{enumerate}
+
+\begin{figure}[t]
+  \centering
+\setlength{\tabcolsep}{0.5em} % for the horizontal padding
+{\renewcommand{\arraystretch}{1.2}% for the vertical padding
+\begin{center}
+\footnotesize
+\begin{tabular}[c]{ | c | c | c |  c  |  c  |  c | c | c | }
+\hline
+
+\hline
+
+% oper1 : dequeue B q
+
+Ex  & Inv & Queue in & \multicolumn{2}{c|}{Contexts in} & \multicolumn{2}{c|}{Contexts out} & (value * Queue out) \\
+\hline
+
+\hline
+ 1 & 1 & \texttt{[("Flight cost:", true);} & cIn & \texttt{B}&  cEnq  & \texttt{B\&true}&   \\   
+\cline{4-7} 
+& &  \texttt{("4055", B);} & cElem & \texttt{true} &  cRem & \texttt{!B\&true} &   \\
+\cline{4-7} 
+& & \texttt{("749",!B)]} &  &  & cToDo & \texttt{B\&false}  &     \\
+\cline{2-8} 
+%%%%%%%%%%
+ & 2 & \texttt{[("4055", B);} & cIn & \texttt{false}&  cPop  &  & (\texttt{"Flight cost:",}  \\   
+\cline{4-7} 
+& & \texttt{("749",!B)]}& cElem &  &  cRem & &  \texttt{[("Flight cost:", !B);} \\
+\cline{4-7} 
+& & &  &  & cToDo &  &  \texttt{("4055", B);("749",!B)]}    \\
+\hline
+
+\hline
+\hline
+
+\hline
+
+% %%%%%%%%%%
+% opera 2 : dequeue B q 
+
+ 2 & 1 & \texttt{[("Flight cost:", !B);} & cIn & \texttt{B}&  cDeq  & \texttt{B\&!B} &  \\   
+\cline{4-7} 
+& & \texttt{("4055", B);} & cElem & \texttt{!B} &  cRem &  \texttt{!B\&!B} &  \\
+\cline{4-7} 
+& & \texttt{("749",!B)]} &    &  & cToDo &\texttt{B\&B}  &      \\
+\cline{2-8} 
+
+%%%%%%%%%%
+
+ & 2 & \texttt{[("4055", B);} & cIn & \texttt{B}&  cDeq  & \texttt{B\&B}&  \\   
+\cline{4-7} 
+& & \texttt{("749",!B)]} & cElem & \texttt{B} &  cRem &\texttt{!B\&B}&  \\
+\cline{4-7} 
+& & &   &  & cToDo &\texttt{B\&!B} &      \\
+\cline{2-8} 
+
+%%%%%%%%%%
+& 3 & \texttt{[("749",!B)]} & cIn & \texttt{false}&  cDeq  &  & (\texttt{"4055",} \\   
+\cline{4-7} 
+& & & cElem & &  cRem & & \texttt{[("Flight cost:", !B);} \\
+\cline{4-7} 
+& & &  &  & cToDo &  & \texttt{("749",!B)]})    \\
+\hline
+
+\hline
+\hline
+
+\hline
+
+% Opera 3 : pop true 
+
+4 & 1 & \texttt{[("4055", B);} & cIn & \texttt{true} &  cDeq  & \texttt{true\&B}&  \\   
+\cline{4-7} 
+& & \texttt{("749",!B)]} & cElem & \texttt{B} &  cRem & \texttt{false\&B} &  \\
+\cline{4-7} 
+& & &   &  & cToDo &  \texttt{true\&!B}  &      \\
+
+\cline{2-8} 
+
+%%%%%%%%%%
+
+& 2 & \texttt{[("749",!B)]} & cIn & \texttt{!B} &  cDeq  & \texttt{!B\&!B} &  \\   
+\cline{4-7} 
+& & & cElem & \texttt{!B} &  cRem & \texttt{B\&!B} &  \\
+\cline{4-7} 
+& & &  &  & cToDo &   \texttt{!B\&B} &    \\
+\cline{2-8} 
+%%%%%%%%%%
+
+& 3 & \texttt{[]} & cIn & \texttt{false} &  cDeq  & & \texttt{($\Chc [\texttt{B}]{\texttt{"4055"}}{\texttt{"749"}}$,}  \\   
+\cline{4-7} 
+& & & cElem &  &  cRem & & \texttt{[])}  \\
+\cline{4-7} 
+& & &  &  & cToDo &   &    \\
+\hline
+
+\hline
+%%%%%%%%%%
+
+\end{tabular}
+\end{center}
+}
+\caption{A step-by-step illustration of contexts in \texttt{dequeue}.}
+\label{fig:pop_table}
+\end{figure}
+
+The helper function \texttt{dequeue\_} is recursively invoked on the queue with two base cases: reaching the end of the queue or if \texttt{cIn} is unsatisfiable. We mentioned above that we stop the search when \texttt{cToDo} is unsatisfiable. This is because we recursively invoke \texttt{dequeue\_} with \texttt{cToDo} so, \texttt{cToDo} of one invocation is \texttt{cIn} of the next. In every invocation of \texttt{dequeue\_}, we update the context of the corresponding first element to be \texttt{cRem}, construct a choice of the return value with context \texttt{cDeq} and simplify all contexts.  
+
+The table in Figure \ref{fig:pop_table} shows the value of each context and the content of the queue in each invocations. The last column has the resulted value and updated queue after the process is done. The sections of the table represent Examples 1, 2, and 4 respectively.  
+
+\begin{enumerate}[label=Example \arabic*:]
+\item In invocation 1, \texttt{cEnq} is satisfiable, so the value is returned. \texttt{cRem} is satisfiable, so the value remains. \texttt{cToDo} is unsatisfiable, so the next invocation terminates. 
+
+\item In invocation 1, \texttt{cEnq} is unsatisfiable, so the value is skipped. \texttt{cRem} is satisfiable, so the value remains. \texttt{cToDo} is satisfiable, so we keep looking for the next value to return. 
+
+In invocation 2, \texttt{cEnq} is satisfiable, so the value is returned. \texttt{cRem} is unsatisfiable, so the value is removed. \texttt{cToDo} is unsatisfiable, so the next invocation terminates. 
+
+\item In invocation 1, \texttt{cEnq} is satisfiable, so the value is returned. \texttt{cRem} is unsatisfiable, so the value is removed. \texttt{cToDo} is satisfiable, so we keep looking for the next value to return. 
+
+In invocation 2, \texttt{cEnq} is satisfiable, so the value is returned. \texttt{cRem} is unsatisfiable, so the value is removed. \texttt{cToDo} is unsatisfiable, so the next invocation terminates. 
+
+\end{enumerate}
+

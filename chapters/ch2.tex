@@ -1,0 +1,40 @@
+\begin{figure}[!htb]
+  \centering
+  \begin{lstlisting}[linewidth=.9\textwidth]
+effect Get: unit -> int;;
+effect Set: int -> unit;;
+
+let state = handler
+  | val y -> (fun _ -> y)
+  | #Get () k -> (fun s -> k s s)
+  | #Set s' k -> (fun _ -> k () s')
+  | finally g -> g 0
+;;
+\end{lstlisting}
+  \caption{The integer state effect and handler.}
+  \label{fig:state-effect}
+\end{figure}
+%
+As background, we introduce \term{algebraic effects} - what they mean and how to use them - by showing a code example. The programming language used in this work is called \term{Eff}\footnote{https://www.eff-lang.org/} which is based on the programming language \emph{OCaml} and has similar syntax and features \cite{Pretnar15}. \emph{Eff} has a flexible extensible effect system that does not exist in \emph{OCaml} called \term{algebraic effects} which is the main tool used in our work (the words effects and algebraic effects are interchangeably used in this thesis). We use \emph{Eff} syntax throughout this thesis in our coding examples. 
+
+\emph{Eff} is based on algebraic effects and handlers. An effect is defined by a set of primitive operations (e.g. \term{set} and \term{get} for a \term{state} effect) and implemented by one or more handlers. The fact that multiple handlers can be written for the same effect increases the power and flexibility of this system. Algebraic effects expand on the traditional exception handling mechanism by allowing computational effects to be thrown and caught by a handler that performs certain computation. Thrown effects have a continuation parameter that could be invoked with an argument of the thrown effect's return type. The continuation resumes the execution from the point where the effect operation was thrown.  
+
+To get a sense of how algebraic effects are used and defined, refer to the integer state effect \cite{Pretnar15} in Figure \ref{fig:state-effect}. This state effect has two primitive operations \texttt{\#Set} and \texttt{\#Get} declared with the keyword \texttt{effect}. \texttt{\#Get} takes a unit value and returns the corresponding state value. \texttt{\#Set} takes a new state value and returns a unit value.
+
+The handler has a separate case for each effect operation plus the return and action cases. The continuation parameter \texttt{k} in \texttt{\#Set} and \texttt{\#Get} is invoked with values of the return type; in \texttt{\#Get} the return type is \texttt{int} and in \texttt{\#Set} the return type is \texttt{unit}. The result of each continuation invocation (\texttt{k ()} or \texttt{k s}) is a function that takes a parameter of type \texttt{int} corresponding to the current state value, which in the case \texttt{finally} gets its initial value 0. In the case of \texttt{\#Get}, the handler returns a function that invokes the continuation with current state value and passes it unchanged to the result of the continuation. In the case of \texttt{\#Set}, the handler returns a function that invokes the continuation with a unit value and passes the new state value (the parameter of \texttt{\#Set}) to the result of the continuation. The \texttt{finally} case starts the computation with the initial value \texttt{0}. The \texttt{val} case is the return case. 
+%
+
+Note that we establish the handler scope for a given expression using the following syntax.
+%
+\[
+\texttt{with handler\_name handle expression}
+\]
+%
+Any effect operation that occurs within that code block will be within the bound of the \texttt{state} handler instance. 
+\begin{lstlisting}
+with state handle
+    #Set(5); #Set(#Get() + 1); #Get()
+;;
+\end{lstlisting}
+%
+This code sets the state to \texttt{5}, then increments it by \texttt{1}. Then, evaluates the state again with the effect operation \texttt{\#Get}, which gives the result of \texttt{6}. 
